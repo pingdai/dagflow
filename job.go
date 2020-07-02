@@ -14,6 +14,12 @@ type Node interface {
 	Complete()
 }
 
+func NewJob(node Node) Job {
+	return Job{
+		node: node,
+	}
+}
+
 func (j *Job) init() {
 	if j.preJobs == nil {
 		j.preJobs = new([]Job)
@@ -40,10 +46,8 @@ func (j *Job) IsFinished() bool {
 	return j.isFinished
 }
 
-func (j *Job) AddNode(node Node) {
-	j.init()
-
-	j.node = node
+func (j *Job) SetFinished(bo bool) {
+	j.isFinished = bo
 }
 
 func (j *Job) AddPreJob(preJob *Job) {
