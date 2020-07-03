@@ -15,6 +15,6 @@ type JobNode interface {
 	IsFinished() bool
 	// 设置结果
 	SetFinished(bo bool)
-	// for test
+	// 节点唯一编号
 	GetTaskID() uint64
 }
