@@ -14,11 +14,12 @@ func main() {
 	df.Add(&job1)
 	df.Add(&job2)
 	df.Add(&job3)
+	df.Connect(&job1, &job2)
 	df.Connect(&job2, &job3)
 
-	err := df.Validate()
+	err := df.Run()
 	if err != nil {
-		log.Fatalf("validate failed,err:%v", err)
+		log.Fatalf("run failed,err:%v", err)
 	}
-	log.Printf("validate ok")
+	log.Printf("run ok")
 }

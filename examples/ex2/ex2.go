@@ -14,7 +14,9 @@ func main() {
 	df.Add(&job1)
 	df.Add(&job2)
 	df.Add(&job3)
+	df.Connect(&job1, &job3)
 	df.Connect(&job2, &job3)
+	df.Connect(&job1, &job1)
 
 	err := df.Validate()
 	if err != nil {
