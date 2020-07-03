@@ -18,14 +18,14 @@ func (df *DagFlow) init() {
 	}
 }
 
-func (df *DagFlow) Root() (Job, error) {
+func (df *DagFlow) Root() (JobNode, error) {
 	df.init()
 
 	df.rwl.RLock()
 	defer df.rwl.RUnlock()
 
 	job, err := df.acyclicGraph.Root()
-	return job.(Job), err
+	return job.(JobNode), err
 }
 
 func (df *DagFlow) Validate() error {
@@ -46,7 +46,7 @@ func (df *DagFlow) TransitiveReduction() {
 	df.acyclicGraph.TransitiveReduction()
 }
 
-func (df *DagFlow) Replace(original, replacement Job) bool {
+func (df *DagFlow) Replace(original, replacement JobNode) bool {
 	df.init()
 
 	df.rwl.Lock()
@@ -55,7 +55,7 @@ func (df *DagFlow) Replace(original, replacement Job) bool {
 	return df.acyclicGraph.Replace(original, replacement)
 }
 
-func (df *DagFlow) DownEdgesList(v Job) []interface{} {
+func (df *DagFlow) DownEdgesList(v JobNode) []interface{} {
 	df.init()
 
 	df.rwl.RLock()
@@ -64,7 +64,7 @@ func (df *DagFlow) DownEdgesList(v Job) []interface{} {
 	return df.acyclicGraph.DownEdges(v).List()
 }
 
-func (df *DagFlow) DownEdgesLen(v Job) int {
+func (df *DagFlow) DownEdgesLen(v JobNode) int {
 	df.init()
 
 	df.rwl.RLock()
@@ -73,7 +73,7 @@ func (df *DagFlow) DownEdgesLen(v Job) int {
 	return df.acyclicGraph.DownEdges(v).Len()
 }
 
-func (df *DagFlow) UpEdgesList(v Job) []interface{} {
+func (df *DagFlow) UpEdgesList(v JobNode) []interface{} {
 	df.init()
 
 	df.rwl.RLock()
@@ -82,7 +82,7 @@ func (df *DagFlow) UpEdgesList(v Job) []interface{} {
 	return df.acyclicGraph.UpEdges(v).List()
 }
 
-func (df *DagFlow) UpEdgesLen(v Job) int {
+func (df *DagFlow) UpEdgesLen(v JobNode) int {
 	df.init()
 
 	df.rwl.RLock()
@@ -91,7 +91,7 @@ func (df *DagFlow) UpEdgesLen(v Job) int {
 	return df.acyclicGraph.UpEdges(v).Len()
 }
 
-func (df *DagFlow) Add(v Job) {
+func (df *DagFlow) Add(v JobNode) {
 	df.init()
 
 	df.rwl.Lock()
@@ -100,7 +100,7 @@ func (df *DagFlow) Add(v Job) {
 	df.acyclicGraph.Add(v)
 }
 
-func (df *DagFlow) Connect(source, target Job) {
+func (df *DagFlow) Connect(source, target JobNode) {
 	df.init()
 
 	df.rwl.Lock()
@@ -109,15 +109,15 @@ func (df *DagFlow) Connect(source, target Job) {
 	df.acyclicGraph.Connect(dag.BasicEdge(source, target))
 }
 
-func (df *DagFlow) fetchWaitJobs() map[Job][]interface{} {
+func (df *DagFlow) fetchWaitJobs() map[JobNode][]interface{} {
 	df.init()
 
 	df.rwl.RLock()
 	defer df.rwl.RUnlock()
 
-	waitJobs := make(map[Job][]interface{})
+	waitJobs := make(map[JobNode][]interface{})
 	for _, v := range df.acyclicGraph.Vertices() {
-		job := v.(Job)
+		job := v.(JobNode)
 		if df.UpEdgesLen(job) > 1 {
 			waitJobs[job] = df.UpEdgesList(job)
 		}
@@ -126,20 +126,20 @@ func (df *DagFlow) fetchWaitJobs() map[Job][]interface{} {
 	return waitJobs
 }
 
-func (df *DagFlow) allJobs() []Job {
+func (df *DagFlow) allJobs() []JobNode {
 	df.init()
 
 	df.rwl.RLock()
 	defer df.rwl.RUnlock()
 
-	jobs := make([]Job, 0, len(df.acyclicGraph.Vertices()))
+	jobs := make([]JobNode, 0, len(df.acyclicGraph.Vertices()))
 	for _, v := range df.acyclicGraph.Vertices() {
-		jobs = append(jobs, v.(Job))
+		jobs = append(jobs, v.(JobNode))
 	}
 	return jobs
 }
 
-func (df *DagFlow) fetchJob(job Job) (Job, bool) {
+func (df *DagFlow) fetchJob(job JobNode) (JobNode, bool) {
 	df.init()
 
 	df.rwl.RLock()
@@ -147,11 +147,11 @@ func (df *DagFlow) fetchJob(job Job) (Job, bool) {
 
 	for _, v := range df.acyclicGraph.Vertices() {
 		if v == job {
-			return v.(Job), true
+			return v.(JobNode), true
 		}
 	}
 
-	return Job{}, false
+	return nil, false
 }
 
 func (df *DagFlow) Run() error {
@@ -167,17 +167,18 @@ func (df *DagFlow) Run() error {
 	waitJobs := df.fetchWaitJobs()
 
 	root, _ := df.Root()
-	roots := []dag.Vertex{root}
+	var rootsMap RootsMap
+	rootsMap.Add(root)
 	for {
-		rn := len(roots)
+		// 判断是否都已处理完成
+		rn := rootsMap.UnfinishedLen()
 		if rn == 0 {
 			break
 		} else {
 			wg := &sync.WaitGroup{}
 			wg.Add(rn)
-			newRoots := make([]dag.Vertex, 0)
-			for _, root := range roots {
-				go func(job Job) {
+			for _, root := range rootsMap.UnfinishedList() {
+				go func(job JobNode) {
 					defer wg.Done()
 
 					if job.IsFinished() {
@@ -188,14 +189,14 @@ func (df *DagFlow) Run() error {
 					if _, ok := waitJobs[job]; ok {
 						for _, wait := range waitJobs[job] {
 							// 实时去判断这些值的状态
-							t, b := df.fetchJob(wait.(Job))
+							t, b := df.fetchJob(wait.(JobNode))
 							if !b {
-								log.Printf("cannot find %+v", wait.(Job))
+								log.Printf("cannot find %+v", wait.(JobNode))
 								time.Sleep(time.Second)
 								continue
 							}
 							if !t.IsFinished() {
-								log.Printf("job : %+v not finish,wait", wait.(Job))
+								log.Printf("want to do %d ,but job: %d not finish,wait", job.GetTaskID(), wait.(JobNode).GetTaskID())
 								time.Sleep(time.Second)
 								continue
 							}
@@ -203,21 +204,94 @@ func (df *DagFlow) Run() error {
 					}
 
 					t := job
-					t.GetNode().Exec()
-					t.GetNode().Complete()
+					t.Exec()
+					t.Complete()
 					t.SetFinished(true)
 					df.Replace(job, t)
-				}(root.(Job))
+					rootsMap.Add(job)
+				}(root)
 
-				for _, v := range df.DownEdgesList(root.(Job)) {
-					newRoots = append(newRoots, dag.Vertex(v))
+				for _, v := range df.DownEdgesList(root) {
+					rootsMap.Add(v.(JobNode))
 				}
 			}
 			wg.Wait()
-			roots = newRoots
 			continue
 		}
 	}
 
 	return nil
+}
+
+type RootsMap struct {
+	rootsMap    map[interface{}]JobNode
+	rootsMapRWL *sync.RWMutex
+}
+
+func (rm *RootsMap) init() {
+	if rm.rootsMapRWL == nil {
+		rm.rootsMapRWL = new(sync.RWMutex)
+	}
+	if rm.rootsMap == nil {
+		rm.rootsMap = make(map[interface{}]JobNode)
+	}
+}
+
+func (rm *RootsMap) Add(jobNode JobNode) {
+	rm.init()
+	rm.rootsMapRWL.Lock()
+	defer rm.rootsMapRWL.Unlock()
+
+	rm.rootsMap[dag.Hashable(jobNode)] = jobNode
+}
+
+func (rm *RootsMap) List() []JobNode {
+	rm.init()
+	rm.rootsMapRWL.RLock()
+	defer rm.rootsMapRWL.RUnlock()
+
+	list := make([]JobNode, 0, len(rm.rootsMap))
+	for _, v := range rm.rootsMap {
+		list = append(list, v)
+	}
+
+	return list
+}
+
+func (rm *RootsMap) Len() int {
+	rm.init()
+	rm.rootsMapRWL.RLock()
+	defer rm.rootsMapRWL.RUnlock()
+
+	return len(rm.rootsMap)
+}
+
+func (rm *RootsMap) UnfinishedList() []JobNode {
+	rm.init()
+	rm.rootsMapRWL.RLock()
+	defer rm.rootsMapRWL.RUnlock()
+
+	list := make([]JobNode, 0)
+	for _, v := range rm.rootsMap {
+		if !v.IsFinished() {
+			list = append(list, v)
+		}
+	}
+
+	return list
+}
+
+func (rm *RootsMap) UnfinishedLen() int {
+	rm.init()
+	rm.rootsMapRWL.RLock()
+	defer rm.rootsMapRWL.RUnlock()
+
+	len := 0
+	for _, v := range rm.rootsMap {
+		if !v.IsFinished() {
+			len++
+		}
+	}
+
+	return len
 }
