@@ -15,7 +15,7 @@ func main() {
 	df.Add(&job2)
 	df.Add(&job3)
 	df.Connect(&job1, &job2)
-	df.Connect(&job2, &job3)
+	df.Connect(&job1, &job3)
 
 	err := df.Run()
 	if err != nil {
