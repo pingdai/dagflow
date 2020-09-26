@@ -91,22 +91,24 @@ func (df *DagFlow) UpEdgesLen(v JobNode) int {
 	return df.acyclicGraph.UpEdges(v).Len()
 }
 
-func (df *DagFlow) Add(v JobNode) {
+func (df *DagFlow) Add(v ...JobNode) {
 	df.init()
 
 	df.rwl.Lock()
 	defer df.rwl.Unlock()
 
-	df.acyclicGraph.Add(v)
+	for _, n := range v {
+		df.acyclicGraph.Add(n)
+	}
 }
 
-func (df *DagFlow) Connect(source, target JobNode) {
+func (df *DagFlow) Connect(from, to JobNode) {
 	df.init()
 
 	df.rwl.Lock()
 	defer df.rwl.Unlock()
 
-	df.acyclicGraph.Connect(dag.BasicEdge(source, target))
+	df.acyclicGraph.Connect(dag.BasicEdge(from, to))
 }
 
 func (df *DagFlow) fetchWaitJobs() map[JobNode][]interface{} {
