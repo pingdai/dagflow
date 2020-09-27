@@ -198,7 +198,7 @@ func (df *DagFlow) Run() error {
 								continue
 							}
 							if !t.IsFinished() {
-								log.Printf("want to do %d ,but job: %d not finish,wait", job.GetTaskID(), wait.(JobNode).GetTaskID())
+								log.Printf("want to do %v ,but job: %v not finish,wait", job.Hashcode(), wait.(JobNode).Hashcode())
 								time.Sleep(time.Second)
 								continue
 							}
